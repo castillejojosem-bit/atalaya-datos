@@ -90,25 +90,79 @@ def es_short(vid):
         return False
 
 
-def feed(cid):
-    # El feed de YouTube a veces responde 404 sin motivo: se reintenta y se prueba
-    # también la lista de subidas del canal (UULF = solo vídeos largos, UU = todos).
-    base = "https://www.youtube.com/feeds/videos.xml?"
-    urls = [base + "playlist_id=UULF" + cid[2:], base + "channel_id=" + cid, base + "playlist_id=UU" + cid[2:]]
-    xml, ultimo = None, None
-    for vuelta in range(3):
-        for u in urls:
-            try:
-                xml = http(u, intentos=1)
-                break
-            except Exception as ex:
-                ultimo = ex
-                time.sleep(2)
-        if xml:
-            break
-        time.sleep(5 + vuelta * 5)
-    if not xml:
-        raise RuntimeError(f"feed no disponible ({ultimo})")
+REL = {"second": 1/3600, "minute": 1/60, "hour": 1, "day": 24, "week": 168, "month": 730, "year": 8760}
+
+
+def _recorrer(nodo, fuera):
+    if isinstance(nodo, dict):
+        if "videoRenderer" in nodo:
+            fuera.append(nodo["videoRenderer"])
+        for v in nodo.values():
+            _recorrer(v, fuera)
+    elif isinstance(nodo, list):
+        for v in nodo:
+            _recorrer(v, fuera)
+
+
+def _texto(t):
+    if not t:
+        return ""
+    if "simpleText" in t:
+        return t["simpleText"]
+    return "".join(r.get("text", "") for r in t.get("runs", []))
+
+
+def _json_en(html, var):
+    m = re.search(r"(?:var\s+)?" + var + r"\s*=\s*(\{.*?\});\s*(?:var\s|</script>)", html, re.S)
+    return json.loads(m.group(1)) if m else None
+
+
+def pagina_videos(cid, ahora):
+    """Respaldo cuando el feed RSS falla: lee la pestaña Vídeos del canal (sin shorts)."""
+    html = http("https://www.youtube.com/channel/" + cid + "/videos?hl=en&gl=US", intentos=2)
+    data = _json_en(html, "ytInitialData")
+    if not data:
+        raise RuntimeError("página del canal sin datos")
+    vrs = []
+    _recorrer(data, vrs)
+    videos = []
+    for r in vrs[:30]:
+        hace = _texto(r.get("publishedTimeText"))
+        m = re.search(r"(\d+)\s+(second|minute|hour|day|week|month|year)", hace)
+        if not m:
+            continue
+        horas = int(m.group(1)) * REL[m.group(2)]
+        vt = re.sub(r"[^0-9]", "", _texto(r.get("viewCountText")))
+        videos.append({"id": r.get("videoId", ""), "titulo": _texto(r.get("title")),
+                       "publicado": (ahora - timedelta(hours=horas)).isoformat(timespec="seconds").replace("+00:00", "Z"),
+                       "descripcion": _texto(r.get("descriptionSnippet"))[:1500],
+                       "vistas": int(vt) if vt else None, "aprox": True})
+    if not videos:
+        raise RuntimeError("página del canal sin vídeos legibles")
+    return videos
+
+
+def detalle(vid):
+    """Fecha exacta, vistas y descripción de un vídeo nuevo (página del vídeo)."""
+    try:
+        html = http("https://www.youtube.com/watch?v=" + vid + "&hl=en&gl=US", intentos=2)
+        p = _json_en(html, "ytInitialPlayerResponse") or {}
+        vd = p.get("videoDetails", {})
+        mf = p.get("microformat", {}).get("playerMicroformatRenderer", {})
+        return {"descripcion": (vd.get("shortDescription") or "")[:1500],
+                "vistas": int(vd["viewCount"]) if vd.get("viewCount") else None,
+                "publicado": mf.get("publishDate") or mf.get("uploadDate")}
+    except Exception:
+        return {}
+
+
+def feed(cid, ahora):
+    # El feed RSS de YouTube a veces responde 404 desde los servidores de GitHub.
+    # Primero se intenta el feed; si falla, la pestaña Vídeos del canal.
+    try:
+        xml = http("https://www.youtube.com/feeds/videos.xml?channel_id=" + cid, intentos=2)
+    except Exception:
+        return pagina_videos(cid, ahora)
     raiz = ET.fromstring(xml)
     videos = []
     for e in raiz.findall("a:entry", NS):
@@ -138,7 +192,7 @@ def main():
             if not cid:
                 errores.append(f'{c["nombre"]}: no se encontró el canal ({c["youtube"]})')
                 continue
-            vids = feed(cid)
+            vids = feed(cid, ahora)
         except Exception as ex:
             errores.append(f'{c["nombre"]}: {ex}')
             continue
@@ -162,7 +216,16 @@ def main():
                      "titulo_original": v["titulo"], "publicado": v["publicado"], "descripcion": v["descripcion"],
                      "vistas": v["vistas"], "mediana_canal": mediana, "multiplicador": mult}
             if v["id"] not in vistos and v.get("_edad_h", 1e9) <= VENTANA_NUEVOS_H:
-                ficha["es_short"] = es_short(v["id"])
+                if v.get("aprox"):
+                    det = detalle(v["id"])
+                    for k in ("descripcion", "vistas"):
+                        if det.get(k):
+                            ficha[k] = det[k]
+                    if det.get("publicado"):
+                        ficha["publicado"] = det["publicado"]
+                    ficha["es_short"] = False
+                else:
+                    ficha["es_short"] = es_short(v["id"])
                 try:
                     img = http(f'https://i.ytimg.com/vi/{v["id"]}/mqdefault.jpg', binario=True)
                     with open(os.path.join(RAIZ, "thumbs", v["id"] + ".jpg"), "wb") as f:
