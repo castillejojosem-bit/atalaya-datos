@@ -1,0 +1,33 @@
+name: Recoger novedades de los canales
+
+on:
+  schedule:
+    # 02:20 UTC = 04:20 en Madrid en verano y 03:20 en invierno; siempre antes de la búsqueda de Claude
+    - cron: "20 2 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: recoger
+  cancel-in-progress: false
+
+jobs:
+  recoger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Recoger vídeos nuevos y miniaturas
+        run: python scripts/recoger.py
+      - name: Guardar en el repositorio
+        run: |
+          git config user.name "atalaya-bot"
+          git config user.email "atalaya-bot@users.noreply.github.com"
+          git add -A data thumbs state
+          git diff --cached --quiet || git commit -m "Novedades $(date -u +%F)"
+          git push
