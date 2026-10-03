@@ -1,0 +1,320 @@
+{
+ "canales": [
+  {
+   "n": 1,
+   "nombre": "Javier Furman",
+   "seccion": "A",
+   "idioma": "español",
+   "youtube": "@javierfurman"
+  },
+  {
+   "n": 2,
+   "nombre": "MetabolismoTV",
+   "seccion": "A",
+   "idioma": "español",
+   "youtube": "@MetabolismoTV"
+  },
+  {
+   "n": 3,
+   "nombre": "Dr. Veller",
+   "seccion": "A",
+   "idioma": "español",
+   "youtube": "@DrVeller"
+  },
+  {
+   "n": 4,
+   "nombre": "DR LA ROSA",
+   "seccion": "A",
+   "idioma": "español",
+   "youtube": "UCqA4L7zgzJFS01F2km1yiDw"
+  },
+  {
+   "n": 5,
+   "nombre": "Dr. Carlos Jaramillo",
+   "seccion": "A",
+   "idioma": "español",
+   "youtube": "UCykTiaMobl2EWW28zmjcznQ"
+  },
+  {
+   "n": 6,
+   "nombre": "Dr. Borja Bandera",
+   "seccion": "A",
+   "idioma": "español",
+   "youtube": "UCiVQrGQ9UqkIyOTJFQj3fzg"
+  },
+  {
+   "n": 7,
+   "nombre": "Drauzio Varella",
+   "seccion": "B",
+   "idioma": "portugués",
+   "youtube": "buscar:Drauzio Varella"
+  },
+  {
+   "n": 8,
+   "nombre": "Nutricionista Patricia Leite",
+   "seccion": "B",
+   "idioma": "portugués",
+   "youtube": "buscar:Nutricionista Patricia Leite"
+  },
+  {
+   "n": 9,
+   "nombre": "Dr. Lair Ribeiro",
+   "seccion": "B",
+   "idioma": "portugués",
+   "youtube": "@DrLairRibeiroOficiall"
+  },
+  {
+   "n": 10,
+   "nombre": "Peter Attia",
+   "seccion": "C",
+   "idioma": "inglés",
+   "youtube": "UC8kGsMa0LygSX9nkBcBH1Sg"
+  },
+  {
+   "n": "10b",
+   "nombre": "Physionic",
+   "seccion": "C",
+   "idioma": "inglés",
+   "youtube": "UCj3p_1jOCJXB_L_we-DjLbA"
+  },
+  {
+   "n": 11,
+   "nombre": "Andrew Huberman",
+   "seccion": "C",
+   "idioma": "inglés",
+   "youtube": "UC2D2CMWXMOVWx7giW1n3LIg"
+  },
+  {
+   "n": 12,
+   "nombre": "Dr. Eric Berg",
+   "seccion": "C",
+   "idioma": "inglés",
+   "youtube": "UC3w193M5tYPJqF0Hi-7U-2g"
+  },
+  {
+   "n": 13,
+   "nombre": "Dr. Sten Ekberg",
+   "seccion": "C",
+   "idioma": "inglés",
+   "youtube": "UCIe2pR6PE0dae9BunJ38F7w"
+  },
+  {
+   "n": 14,
+   "nombre": "Thomas DeLauer",
+   "seccion": "C",
+   "idioma": "inglés",
+   "youtube": "UC70SrI3VkT1MXALRtf0pcHg"
+  },
+  {
+   "n": 15,
+   "nombre": "Bryan Johnson",
+   "seccion": "C",
+   "idioma": "inglés",
+   "youtube": "UCnRVL1-HJnXWB_Xi2dAoTcg"
+  },
+  {
+   "n": 16,
+   "nombre": "Barbara O'Neill",
+   "seccion": "D",
+   "idioma": "inglés",
+   "youtube": "@realbarbaraoneillvideos"
+  },
+  {
+   "n": 17,
+   "nombre": "Fit Tuber",
+   "seccion": "D",
+   "idioma": "inglés/hindi",
+   "youtube": "buscar:Fit Tuber"
+  },
+  {
+   "n": 18,
+   "nombre": "Health 2.0 (健康2.0)",
+   "seccion": "D",
+   "idioma": "chino",
+   "youtube": "UCAqzHNzLTC6Vm5UYE7xw_2A"
+  },
+  {
+   "n": 19,
+   "nombre": "Dr. Josh Axe",
+   "seccion": "D",
+   "idioma": "inglés",
+   "youtube": "UCgtp61tf9tYF7nG_gIQ94LQ"
+  },
+  {
+   "n": 21,
+   "nombre": "dr. Zaidul Akbar",
+   "seccion": "D",
+   "idioma": "indonesio",
+   "youtube": "UCRdE6cuWbG38vLI7hIAWG4A"
+  },
+  {
+   "n": 22,
+   "nombre": "Kim So-hyung (김소형 채널H)",
+   "seccion": "D",
+   "idioma": "coreano",
+   "youtube": "buscar:김소형 채널H"
+  },
+  {
+   "n": 23,
+   "nombre": "Liebscher & Bracht",
+   "seccion": "E",
+   "idioma": "alemán",
+   "youtube": "@Liebscher.Bracht"
+  },
+  {
+   "n": 24,
+   "nombre": "Doctor Evdokimenko",
+   "seccion": "E",
+   "idioma": "ruso",
+   "youtube": "UCmyE72X4HsC7XD-z6QIQpzw"
+  },
+  {
+   "n": 25,
+   "nombre": "Miloslav Šindelář",
+   "seccion": "E",
+   "idioma": "checo",
+   "youtube": "buscar:Miloslav Šindelář"
+  },
+  {
+   "n": 26,
+   "nombre": "Pacientul 2.0",
+   "seccion": "E",
+   "idioma": "rumano",
+   "youtube": "buscar:Pacientul 2.0"
+  },
+  {
+   "n": 28,
+   "nombre": "Οδηγός Υγείας",
+   "seccion": "E",
+   "idioma": "griego",
+   "youtube": "UC3DwueESf8taOXxih-iuFPg"
+  },
+  {
+   "n": 29,
+   "nombre": "Dr Ishiguro",
+   "seccion": "E",
+   "idioma": "japonés",
+   "youtube": "UCUGc7d8GW02ibfbUpVy3wzg"
+  },
+  {
+   "n": 30,
+   "nombre": "Dr Jimmy Mohamed",
+   "seccion": "E",
+   "idioma": "francés",
+   "youtube": "UCJ5OoCZgYDKsoOL92nmow7Q"
+  },
+  {
+   "n": 31,
+   "nombre": "After the Rain (비온뒤)",
+   "seccion": "E",
+   "idioma": "coreano",
+   "youtube": "UCF9vbHlZpz7FbOAky3fnYxw"
+  },
+  {
+   "n": 32,
+   "nombre": "Mohamed Al-Fayed",
+   "seccion": "E",
+   "idioma": "árabe",
+   "youtube": "buscar:الدكتور محمد الفايد"
+  },
+  {
+   "n": 33,
+   "nombre": "Tasnim Jara",
+   "seccion": "E",
+   "idioma": "bengalí",
+   "youtube": "buscar:Tasnim Jara"
+  },
+  {
+   "n": 34,
+   "nombre": "Dr Jahangir Kabir",
+   "seccion": "E",
+   "idioma": "bengalí",
+   "youtube": "UC7vmqR9wv-upqITiV0S65DA"
+  },
+  {
+   "n": 35,
+   "nombre": "Mor Lab Panda",
+   "seccion": "E",
+   "idioma": "tailandés",
+   "youtube": "buscar:หมอแล็บแพนด้า"
+  },
+  {
+   "n": 36,
+   "nombre": "Fondazione Valter Longo",
+   "seccion": "F",
+   "idioma": "italiano",
+   "youtube": "UCIuHoRDTpeFvdP3ulPOKlLg"
+  },
+  {
+   "n": 37,
+   "nombre": "Dzień Dobry Długowieczność",
+   "seccion": "F",
+   "idioma": "polaco",
+   "youtube": "UCOJsFPVTW7mmznNS4Fq_Ojg"
+  },
+  {
+   "n": 39,
+   "nombre": "FoundMyFitness (Rhonda Patrick)",
+   "seccion": "G",
+   "idioma": "inglés",
+   "youtube": "UCWF8SqJVNlx-ctXbLswcTcA"
+  },
+  {
+   "n": 40,
+   "nombre": "Optispan",
+   "seccion": "G",
+   "idioma": "inglés",
+   "youtube": "@optispan"
+  },
+  {
+   "n": 40.1,
+   "nombre": "Matt Kaeberlein",
+   "seccion": "G",
+   "idioma": "inglés",
+   "youtube": "UCYIlTJbHsx5w1h_cUmZkA2w"
+  },
+  {
+   "n": 41,
+   "nombre": "Dr. Brad Stanfield",
+   "seccion": "G",
+   "idioma": "inglés",
+   "youtube": "UCpcvPcHJVOkO9Qp79BOagTg"
+  },
+  {
+   "n": 42,
+   "nombre": "Bob & Brad",
+   "seccion": "H",
+   "idioma": "inglés",
+   "youtube": "UCmTe0LsfEbpkDpgrxKAWbRA"
+  },
+  {
+   "n": 43,
+   "nombre": "Renaissance Periodization",
+   "seccion": "H",
+   "idioma": "inglés",
+   "youtube": "UCfQgsKhHjSyRLOp9mnffqVg"
+  },
+  {
+   "n": 44,
+   "nombre": "Sergio Peinado",
+   "seccion": "H",
+   "idioma": "español",
+   "youtube": "UC9l7xbkF_n-WP61f74AjKvw"
+  },
+  {
+   "n": 45,
+   "nombre": "Dr. Gabrielle Lyon",
+   "seccion": "H",
+   "idioma": "inglés",
+   "youtube": "buscar:Dr. Gabrielle Lyon"
+  },
+  {
+   "n": 46,
+   "nombre": "David Sinclair",
+   "seccion": "I",
+   "idioma": "inglés",
+   "youtube": "buscar:David Sinclair longevity"
+  }
+ ]
+}
+x
