@@ -44,7 +44,7 @@ def http(url, binario=False, intentos=3):
                 cuerpo = r.read()
                 return cuerpo if binario else cuerpo.decode("utf-8", "replace")
         except urllib.error.HTTPError as e:
-            if e.code == 404:
+            if i == intentos - 1:
                 raise
             time.sleep(2 + i * 3)
         except Exception:
@@ -91,7 +91,24 @@ def es_short(vid):
 
 
 def feed(cid):
-    xml = http("https://www.youtube.com/feeds/videos.xml?channel_id=" + cid)
+    # El feed de YouTube a veces responde 404 sin motivo: se reintenta y se prueba
+    # también la lista de subidas del canal (UULF = solo vídeos largos, UU = todos).
+    base = "https://www.youtube.com/feeds/videos.xml?"
+    urls = [base + "playlist_id=UULF" + cid[2:], base + "channel_id=" + cid, base + "playlist_id=UU" + cid[2:]]
+    xml, ultimo = None, None
+    for vuelta in range(3):
+        for u in urls:
+            try:
+                xml = http(u, intentos=1)
+                break
+            except Exception as ex:
+                ultimo = ex
+                time.sleep(2)
+        if xml:
+            break
+        time.sleep(5 + vuelta * 5)
+    if not xml:
+        raise RuntimeError(f"feed no disponible ({ultimo})")
     raiz = ET.fromstring(xml)
     videos = []
     for e in raiz.findall("a:entry", NS):
