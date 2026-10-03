@@ -204,6 +204,20 @@ def feed(cid, ahora):
     return videos
 
 
+def bajar_mini(vid, errores, canal):
+    ruta = os.path.join(RAIZ, "thumbs", vid + ".jpg")
+    if os.path.exists(ruta):
+        return "thumbs/" + vid + ".jpg"
+    try:
+        img = http(f"https://i.ytimg.com/vi/{vid}/mqdefault.jpg", binario=True)
+        with open(ruta, "wb") as f:
+            f.write(img)
+        return "thumbs/" + vid + ".jpg"
+    except Exception as ex:
+        errores.append(f"{canal}: miniatura de {vid} no descargada ({ex})")
+        return None
+
+
 def main():
     ahora = datetime.now(timezone.utc)
     hoy = (ahora + timedelta(hours=2)).strftime("%Y-%m-%d")  # fecha de Madrid aproximada
@@ -252,19 +266,21 @@ def main():
                     ficha["es_short"] = False
                 else:
                     ficha["es_short"] = es_short(v["id"])
-                try:
-                    img = http(f'https://i.ytimg.com/vi/{v["id"]}/mqdefault.jpg', binario=True)
-                    with open(os.path.join(RAIZ, "thumbs", v["id"] + ".jpg"), "wb") as f:
-                        f.write(img)
-                    ficha["miniatura"] = "thumbs/" + v["id"] + ".jpg"
-                except Exception as ex:
-                    ficha["miniatura"] = None
-                    errores.append(f'{c["nombre"]}: miniatura de {v["id"]} no descargada ({ex})')
+                ficha["miniatura"] = bajar_mini(v["id"], errores, c["nombre"])
                 nuevos.append(ficha)
                 vistos.add(v["id"])
             if mult and mult >= umbral and OUTLIER_MIN_DIAS * 24 <= v.get("_edad_h", 0) <= OUTLIER_MAX_DIAS * 24:
+                if "miniatura" not in ficha:
+                    ficha["miniatura"] = bajar_mini(v["id"], errores, c["nombre"])
                 outliers.append(ficha)
         time.sleep(1)
+
+    # miniaturas que pide la búsqueda de Claude (outliers que llegan por vidIQ)
+    pedidas = leer("state/pedir_miniaturas.json", [])
+    for vid in pedidas:
+        if re.fullmatch(r"[\w-]{11}", str(vid)):
+            bajar_mini(vid, errores, "pedida")
+    escribir("state/pedir_miniaturas.json", [])
 
     # poda: miniaturas de más de 30 días
     for f in os.listdir(os.path.join(RAIZ, "thumbs")):
