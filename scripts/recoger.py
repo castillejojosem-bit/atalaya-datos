@@ -93,10 +93,36 @@ def es_short(vid):
 REL = {"second": 1/3600, "minute": 1/60, "hour": 1, "day": 24, "week": 168, "month": 730, "year": 8760}
 
 
+def _desde_lockup(l):
+    """Convierte el formato nuevo de YouTube (lockupViewModel) al de videoRenderer."""
+    if l.get("contentType") != "LOCKUP_CONTENT_TYPE_VIDEO":
+        return {}
+    md = l.get("metadata", {}).get("lockupMetadataViewModel", {})
+    partes = []
+    for fila in md.get("metadata", {}).get("contentMetadataViewModel", {}).get("metadataRows", []):
+        for p in fila.get("metadataParts", []):
+            partes.append(p.get("accessibilityLabel") or p.get("text", {}).get("content", ""))
+    vistas = next((p for p in partes if "view" in p), "")
+    hace = next((p for p in partes if "ago" in p), "")
+    return {"videoId": l.get("contentId", ""), "title": {"simpleText": md.get("title", {}).get("content", "")},
+            "publishedTimeText": {"simpleText": hace}, "viewCountText": {"simpleText": vistas}}
+
+
+def _num_vistas(t):
+    m = re.search(r"([\d.,]+)\s*(thousand|million|billion|K|M|B)?", t or "")
+    if not m:
+        return None
+    n = float(m.group(1).replace(",", ""))
+    mult = {"thousand": 1e3, "K": 1e3, "million": 1e6, "M": 1e6, "billion": 1e9, "B": 1e9}.get(m.group(2) or "", 1)
+    return int(n * mult)
+
+
 def _recorrer(nodo, fuera):
     if isinstance(nodo, dict):
         if "videoRenderer" in nodo:
             fuera.append(nodo["videoRenderer"])
+        if "lockupViewModel" in nodo:
+            fuera.append(_desde_lockup(nodo["lockupViewModel"]))
         for v in nodo.values():
             _recorrer(v, fuera)
     elif isinstance(nodo, list):
@@ -126,17 +152,17 @@ def pagina_videos(cid, ahora):
     vrs = []
     _recorrer(data, vrs)
     videos = []
-    for r in vrs[:30]:
+    for r in [x for x in vrs if x.get("videoId")][:30]:
         hace = _texto(r.get("publishedTimeText"))
         m = re.search(r"(\d+)\s+(second|minute|hour|day|week|month|year)", hace)
         if not m:
             continue
         horas = int(m.group(1)) * REL[m.group(2)]
-        vt = re.sub(r"[^0-9]", "", _texto(r.get("viewCountText")))
+        vt = _num_vistas(_texto(r.get("viewCountText")))
         videos.append({"id": r.get("videoId", ""), "titulo": _texto(r.get("title")),
                        "publicado": (ahora - timedelta(hours=horas)).isoformat(timespec="seconds").replace("+00:00", "Z"),
                        "descripcion": _texto(r.get("descriptionSnippet"))[:1500],
-                       "vistas": int(vt) if vt else None, "aprox": True})
+                       "vistas": vt, "aprox": True})
     if not videos:
         raise RuntimeError("página del canal sin vídeos legibles")
     return videos
