@@ -28,6 +28,6 @@ jobs:
         run: |
           git config user.name "atalaya-bot"
           git config user.email "atalaya-bot@users.noreply.github.com"
-          git add -A data thumbs state
+          git add -A data state
           git diff --cached --quiet || git commit -m "Novedades $(date -u +%F)"
           git push

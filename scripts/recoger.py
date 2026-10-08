@@ -3,7 +3,7 @@
 
 Solo usa la biblioteca estándar de Python. Lee canales.json, consulta el
 feed público de cada canal en YouTube, guarda las miniaturas de los vídeos
-nuevos en thumbs/ y escribe data/AAAA-MM-DD.json y data/latest.json.
+nuevos en data/thumbs/ y escribe data/AAAA-MM-DD.json y data/latest.json.
 La tarea de las 5:00 de Claude lee esos ficheros y los pasa a la app.
 """
 import json, os, re, statistics, sys, time, urllib.request, urllib.error, urllib.parse
@@ -205,14 +205,14 @@ def feed(cid, ahora):
 
 
 def bajar_mini(vid, errores, canal):
-    ruta = os.path.join(RAIZ, "thumbs", vid + ".jpg")
+    ruta = os.path.join(RAIZ, "data", "thumbs", vid + ".jpg")
     if os.path.exists(ruta):
-        return "thumbs/" + vid + ".jpg"
+        return "data/thumbs/" + vid + ".jpg"
     try:
         img = http(f"https://i.ytimg.com/vi/{vid}/mqdefault.jpg", binario=True)
         with open(ruta, "wb") as f:
             f.write(img)
-        return "thumbs/" + vid + ".jpg"
+        return "data/thumbs/" + vid + ".jpg"
     except Exception as ex:
         errores.append(f"{canal}: miniatura de {vid} no descargada ({ex})")
         return None
@@ -283,8 +283,8 @@ def main():
     escribir("state/pedir_miniaturas.json", [])
 
     # poda: miniaturas de más de 30 días
-    for f in os.listdir(os.path.join(RAIZ, "thumbs")):
-        p = os.path.join(RAIZ, "thumbs", f)
+    for f in os.listdir(os.path.join(RAIZ, "data", "thumbs")):
+        p = os.path.join(RAIZ, "data", "thumbs", f)
         if f.endswith(".jpg") and time.time() - os.path.getmtime(p) > 30 * 86400:
             os.remove(p)
 
