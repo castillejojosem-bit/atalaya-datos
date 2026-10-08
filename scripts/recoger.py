@@ -1,24 +1,36 @@
 #!/usr/bin/env python3
 """Recoge cada madrugada los vídeos nuevos de los canales del mapa.
 
-Solo usa la biblioteca estándar de Python. Lee canales.json, consulta el
-feed público de cada canal en YouTube, guarda las miniaturas de los vídeos
-nuevos en data/thumbs/ y escribe data/AAAA-MM-DD.json y data/latest.json.
-La tarea de las 5:00 de Claude lee esos ficheros y los pasa a la app.
+Solo usa la biblioteca estándar de Python. Lee canales.json, consulta la
+YouTube Data API v3 (API oficial, no RSS ni scraping) para cada canal,
+guarda las miniaturas de los vídeos nuevos en data/thumbs/ y escribe
+data/AAAA-MM-DD.json y data/latest.json. La tarea de las 5:00 de Claude
+lee esos ficheros y los pasa a la app.
+
+Necesita la variable de entorno YT_API_KEY (secreto "YT_API_KEY" en la
+configuración de GitHub Actions del repositorio) con una clave de la API
+de datos de YouTube v3, activada en Google Cloud Console.
+
+Coste de cuota por ejecución, una vez la caché está caliente (los canales
+ya resueltos no vuelven a pedirse): ~1 unidad por canal para la lista de
+"Subidas" la primera vez (luego cae a 0, se guarda en state/playlists.json),
+1 unidad por canal para los vídeos recientes, y 1 unidad cada 50 vídeos
+para sus detalles — unas 60-100 unidades/noche sobre una cuota diaria de
+10.000. Resolver un canal nuevo por "buscar:texto" cuesta 100 unidades,
+pero solo la primera vez (se guarda en state/channel_ids.json).
 """
 import json, os, re, statistics, sys, time, urllib.request, urllib.error, urllib.parse
 from datetime import datetime, timedelta, timezone
-import xml.etree.ElementTree as ET
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-UA = {"User-Agent": "Mozilla/5.0 (atalaya-datos; +https://github.com)",
-      "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-      "Cookie": "CONSENT=YES+cb; SOCS=CAI"}
-NS = {"a": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015",
-      "media": "http://search.yahoo.com/mrss/"}
+API = "https://www.googleapis.com/youtube/v3/"
+CLAVE = os.environ.get("YT_API_KEY", "")
+UA = {"User-Agent": "Mozilla/5.0 (atalaya-datos; +https://github.com)"}
 GIGANTES = {"UC2D2CMWXMOVWx7giW1n3LIg", "UC3w193M5tYPJqF0Hi-7U-2g", "UC8kGsMa0LygSX9nkBcBH1Sg"}
-VENTANA_NUEVOS_H = 50          # un vídeo es «nuevo» si se publicó en las últimas 50 horas
+VENTANA_NUEVOS_H = 50           # un vídeo es «nuevo» si se publicó en las últimas 50 horas
 OUTLIER_MIN_DIAS, OUTLIER_MAX_DIAS = 7, 120
+VIDEOS_POR_CANAL = 15           # cuántos vídeos recientes se piden por canal
+ISO_DUR = re.compile(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?")
 
 
 def leer(ruta, defecto):
@@ -36,172 +48,98 @@ def escribir(ruta, datos):
         json.dump(datos, f, ensure_ascii=False, indent=1)
 
 
-def http(url, binario=False, intentos=3):
-    for i in range(intentos):
+def api(recurso, **params):
+    """Llama a un endpoint de la YouTube Data API v3 y devuelve el JSON."""
+    params["key"] = CLAVE
+    url = API + recurso + "?" + urllib.parse.urlencode(params)
+    for intento in range(3):
         try:
-            req = urllib.request.Request(url, headers=UA)
+            req = urllib.request.Request(url, headers={"Accept": "application/json"})
             with urllib.request.urlopen(req, timeout=30) as r:
-                cuerpo = r.read()
-                return cuerpo if binario else cuerpo.decode("utf-8", "replace")
+                return json.loads(r.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
-            if i == intentos - 1:
-                raise
-            time.sleep(2 + i * 3)
+            cuerpo = e.read().decode("utf-8", "replace")
+            if e.code == 403 and "quotaExceeded" in cuerpo:
+                raise RuntimeError("cuota diaria de la API de YouTube agotada")
+            if intento == 2:
+                raise RuntimeError(f"HTTP {e.code} en {recurso}: {cuerpo[:200]}")
+            time.sleep(2 + intento * 3)
         except Exception:
-            time.sleep(2 + i * 3)
-    raise RuntimeError("sin respuesta: " + url)
+            if intento == 2:
+                raise
+            time.sleep(2 + intento * 3)
+    raise RuntimeError("sin respuesta: " + recurso)
 
 
-def resolver(yt, cache):
+def resolver_canal(yt, cache):
+    """Convierte el identificador de canales.json en un channel_id (UC…), con caché."""
     if yt in cache:
         return cache[yt]
     cid = None
     if yt.startswith("UC") and len(yt) == 24:
         cid = yt
     elif yt.startswith("@"):
-        html = http("https://www.youtube.com/" + urllib.parse.quote(yt))
-        m = (re.search(r'<link rel="canonical" href="https://www\.youtube\.com/channel/(UC[\w-]{22})"', html)
-             or re.search(r'"externalId":"(UC[\w-]{22})"', html)
-             or re.search(r'"channelId":"(UC[\w-]{22})"', html))
-        cid = m.group(1) if m else None
+        d = api("channels", part="id", forHandle=yt)
+        items = d.get("items", [])
+        if items:
+            cid = items[0]["id"]
     elif yt.startswith("buscar:"):
-        q = urllib.parse.quote(yt[7:])
-        html = http("https://www.youtube.com/results?search_query=" + q + "&sp=EgIQAg%253D%253D")
-        m = re.search(r'"channelRenderer":\{"channelId":"(UC[\w-]{22})"', html) or re.search(r'"channelId":"(UC[\w-]{22})"', html)
-        cid = m.group(1) if m else None
+        d = api("search", part="snippet", type="channel", maxResults=1, q=yt[7:])
+        items = d.get("items", [])
+        if items:
+            cid = items[0]["id"]["channelId"]
     if cid:
         cache[yt] = cid
     return cid
 
 
-def es_short(vid):
-    try:
-        req = urllib.request.Request("https://www.youtube.com/shorts/" + vid, headers=UA, method="HEAD")
-
-        class NoRedir(urllib.request.HTTPRedirectHandler):
-            def redirect_request(self, *a, **k):
-                return None
-        op = urllib.request.build_opener(NoRedir)
-        with op.open(req, timeout=20) as r:
-            return r.status == 200
-    except urllib.error.HTTPError:
-        return False
-    except Exception:
-        return False
+def playlist_subidas(cid, cache_playlists):
+    """Id de la lista de reproducción «Subidas» del canal, con caché."""
+    if cid in cache_playlists:
+        return cache_playlists[cid]
+    d = api("channels", part="contentDetails", id=cid)
+    items = d.get("items", [])
+    if not items:
+        return None
+    pl = items[0]["contentDetails"]["relatedPlaylists"].get("uploads")
+    if pl:
+        cache_playlists[cid] = pl
+    return pl
 
 
-REL = {"second": 1/3600, "minute": 1/60, "hour": 1, "day": 24, "week": 168, "month": 730, "year": 8760}
+def videos_recientes(playlist_id):
+    """Los últimos VIDEOS_POR_CANAL vídeos subidos a la lista."""
+    d = api("playlistItems", part="contentDetails", playlistId=playlist_id, maxResults=VIDEOS_POR_CANAL)
+    return [it["contentDetails"]["videoId"] for it in d.get("items", [])
+            if it.get("contentDetails", {}).get("videoId")]
 
 
-def _desde_lockup(l):
-    """Convierte el formato nuevo de YouTube (lockupViewModel) al de videoRenderer."""
-    if l.get("contentType") != "LOCKUP_CONTENT_TYPE_VIDEO":
-        return {}
-    md = l.get("metadata", {}).get("lockupMetadataViewModel", {})
-    partes = []
-    for fila in md.get("metadata", {}).get("contentMetadataViewModel", {}).get("metadataRows", []):
-        for p in fila.get("metadataParts", []):
-            partes.append(p.get("accessibilityLabel") or p.get("text", {}).get("content", ""))
-    vistas = next((p for p in partes if "view" in p), "")
-    hace = next((p for p in partes if "ago" in p), "")
-    return {"videoId": l.get("contentId", ""), "title": {"simpleText": md.get("title", {}).get("content", "")},
-            "publishedTimeText": {"simpleText": hace}, "viewCountText": {"simpleText": vistas}}
-
-
-def _num_vistas(t):
-    m = re.search(r"([\d.,]+)\s*(thousand|million|billion|K|M|B)?", t or "")
+def duracion_segundos(iso):
+    m = ISO_DUR.fullmatch(iso or "")
     if not m:
         return None
-    n = float(m.group(1).replace(",", ""))
-    mult = {"thousand": 1e3, "K": 1e3, "million": 1e6, "M": 1e6, "billion": 1e9, "B": 1e9}.get(m.group(2) or "", 1)
-    return int(n * mult)
+    h, mi, s = (int(x) if x else 0 for x in m.groups())
+    return h * 3600 + mi * 60 + s
 
 
-def _recorrer(nodo, fuera):
-    if isinstance(nodo, dict):
-        if "videoRenderer" in nodo:
-            fuera.append(nodo["videoRenderer"])
-        if "lockupViewModel" in nodo:
-            fuera.append(_desde_lockup(nodo["lockupViewModel"]))
-        for v in nodo.values():
-            _recorrer(v, fuera)
-    elif isinstance(nodo, list):
-        for v in nodo:
-            _recorrer(v, fuera)
-
-
-def _texto(t):
-    if not t:
-        return ""
-    if "simpleText" in t:
-        return t["simpleText"]
-    return "".join(r.get("text", "") for r in t.get("runs", []))
-
-
-def _json_en(html, var):
-    m = re.search(r"(?:var\s+)?" + var + r"\s*=\s*(\{.*?\});\s*(?:var\s|</script>)", html, re.S)
-    return json.loads(m.group(1)) if m else None
-
-
-def pagina_videos(cid, ahora):
-    """Respaldo cuando el feed RSS falla: lee la pestaña Vídeos del canal (sin shorts)."""
-    html = http("https://www.youtube.com/channel/" + cid + "/videos?hl=en&gl=US", intentos=2)
-    data = _json_en(html, "ytInitialData")
-    if not data:
-        raise RuntimeError("página del canal sin datos")
-    vrs = []
-    _recorrer(data, vrs)
-    videos = []
-    for r in [x for x in vrs if x.get("videoId")][:30]:
-        hace = _texto(r.get("publishedTimeText"))
-        m = re.search(r"(\d+)\s+(second|minute|hour|day|week|month|year)", hace)
-        if not m:
-            continue
-        horas = int(m.group(1)) * REL[m.group(2)]
-        vt = _num_vistas(_texto(r.get("viewCountText")))
-        videos.append({"id": r.get("videoId", ""), "titulo": _texto(r.get("title")),
-                       "publicado": (ahora - timedelta(hours=horas)).isoformat(timespec="seconds").replace("+00:00", "Z"),
-                       "descripcion": _texto(r.get("descriptionSnippet"))[:1500],
-                       "vistas": vt, "aprox": True})
-    if not videos:
-        raise RuntimeError("página del canal sin vídeos legibles")
-    return videos
-
-
-def detalle(vid):
-    """Fecha exacta, vistas y descripción de un vídeo nuevo (página del vídeo)."""
-    try:
-        html = http("https://www.youtube.com/watch?v=" + vid + "&hl=en&gl=US", intentos=2)
-        p = _json_en(html, "ytInitialPlayerResponse") or {}
-        vd = p.get("videoDetails", {})
-        mf = p.get("microformat", {}).get("playerMicroformatRenderer", {})
-        return {"descripcion": (vd.get("shortDescription") or "")[:1500],
-                "vistas": int(vd["viewCount"]) if vd.get("viewCount") else None,
-                "publicado": mf.get("publishDate") or mf.get("uploadDate")}
-    except Exception:
-        return {}
-
-
-def feed(cid, ahora):
-    # El feed RSS de YouTube a veces responde 404 desde los servidores de GitHub.
-    # Primero se intenta el feed; si falla, la pestaña Vídeos del canal.
-    try:
-        xml = http("https://www.youtube.com/feeds/videos.xml?channel_id=" + cid, intentos=2)
-    except Exception:
-        return pagina_videos(cid, ahora)
-    raiz = ET.fromstring(xml)
-    videos = []
-    for e in raiz.findall("a:entry", NS):
-        g = e.find("media:group", NS)
-        stats = g.find("media:community/media:statistics", NS) if g is not None else None
-        videos.append({
-            "id": e.findtext("yt:videoId", default="", namespaces=NS),
-            "titulo": e.findtext("a:title", default="", namespaces=NS),
-            "publicado": e.findtext("a:published", default="", namespaces=NS),
-            "descripcion": (g.findtext("media:description", default="", namespaces=NS) if g is not None else "")[:1500],
-            "vistas": int(stats.get("views", "0")) if stats is not None else None,
-        })
-    return videos
+def detalles_videos(ids):
+    """snippet + statistics + contentDetails de hasta 50 ids por llamada."""
+    detalles = {}
+    for i in range(0, len(ids), 50):
+        lote = ids[i:i + 50]
+        d = api("videos", part="snippet,statistics,contentDetails", id=",".join(lote))
+        for it in d.get("items", []):
+            sn, st, cd = it["snippet"], it.get("statistics", {}), it.get("contentDetails", {})
+            dur = duracion_segundos(cd.get("duration"))
+            detalles[it["id"]] = {
+                "titulo": sn.get("title", ""),
+                "publicado": sn.get("publishedAt", ""),
+                "descripcion": (sn.get("description") or "")[:1500],
+                "vistas": int(st["viewCount"]) if st.get("viewCount") is not None else None,
+                # Youtube permite Shorts de hasta 3 minutos: duración <= 180s es la aproximación.
+                "es_short": dur is not None and dur <= 180,
+            }
+    return detalles
 
 
 def bajar_mini(vid, errores, canal):
@@ -209,7 +147,9 @@ def bajar_mini(vid, errores, canal):
     if os.path.exists(ruta):
         return "data/thumbs/" + vid + ".jpg"
     try:
-        img = http(f"https://i.ytimg.com/vi/{vid}/mqdefault.jpg", binario=True)
+        req = urllib.request.Request(f"https://i.ytimg.com/vi/{vid}/mqdefault.jpg", headers=UA)
+        with urllib.request.urlopen(req, timeout=30) as r:
+            img = r.read()
         with open(ruta, "wb") as f:
             f.write(img)
         return "data/thumbs/" + vid + ".jpg"
@@ -219,61 +159,71 @@ def bajar_mini(vid, errores, canal):
 
 
 def main():
+    if not CLAVE:
+        print("Falta la variable de entorno YT_API_KEY (secreto de GitHub Actions)", file=sys.stderr)
+        return 1
+
     ahora = datetime.now(timezone.utc)
     hoy = (ahora + timedelta(hours=2)).strftime("%Y-%m-%d")  # fecha de Madrid aproximada
     canales = leer("canales.json", {"canales": []})["canales"]
     cache = leer("state/channel_ids.json", {})
+    cache_playlists = leer("state/playlists.json", {})
     vistos = set(leer("state/vistos.json", []))
     nuevos, outliers, errores = [], [], []
 
     for c in canales:
         try:
-            cid = resolver(c["youtube"], cache)
+            cid = resolver_canal(c["youtube"], cache)
             if not cid:
                 errores.append(f'{c["nombre"]}: no se encontró el canal ({c["youtube"]})')
                 continue
-            vids = feed(cid, ahora)
+            pl = playlist_subidas(cid, cache_playlists)
+            if not pl:
+                errores.append(f'{c["nombre"]}: sin lista de vídeos subidos')
+                continue
+            ids = videos_recientes(pl)
+            det = detalles_videos(ids) if ids else {}
         except Exception as ex:
             errores.append(f'{c["nombre"]}: {ex}')
             continue
-        # outliers: vídeos de entre 7 y 120 días frente a la mediana de su propio feed
+
+        # outliers: vídeos de entre 7 y 120 días frente a la mediana de los recientes del canal
         con_edad = []
-        for v in vids:
+        for vid in ids:
+            info = det.get(vid)
+            if not info or not info["publicado"]:
+                continue
             try:
-                pub = datetime.fromisoformat(v["publicado"].replace("Z", "+00:00"))
+                pub = datetime.fromisoformat(info["publicado"].replace("Z", "+00:00"))
             except ValueError:
                 continue
-            v["_edad_h"] = (ahora - pub).total_seconds() / 3600
-            if v["vistas"] is not None:
-                con_edad.append(v)
+            info["_edad_h"] = (ahora - pub).total_seconds() / 3600
+            if info["vistas"] is not None:
+                con_edad.append(info)
+
         base = [v["vistas"] for v in con_edad if v["_edad_h"] >= OUTLIER_MIN_DIAS * 24]
         mediana = statistics.median(base) if len(base) >= 5 else None
         umbral = 3 if cid in GIGANTES else 5
-        for v in vids:
-            mult = round(v["vistas"] / mediana, 1) if (mediana and v.get("vistas")) else None
+
+        for vid in ids:
+            info = det.get(vid)
+            if not info or not info["publicado"]:
+                continue
+            mult = round(info["vistas"] / mediana, 1) if (mediana and info.get("vistas")) else None
             ficha = {"canal": c["nombre"], "n": c["n"], "seccion": c["seccion"], "idioma": c["idioma"],
-                     "channel_id": cid, "video_id": v["id"], "url": "https://www.youtube.com/watch?v=" + v["id"],
-                     "titulo_original": v["titulo"], "publicado": v["publicado"], "descripcion": v["descripcion"],
-                     "vistas": v["vistas"], "mediana_canal": mediana, "multiplicador": mult}
-            if v["id"] not in vistos and v.get("_edad_h", 1e9) <= VENTANA_NUEVOS_H:
-                if v.get("aprox"):
-                    det = detalle(v["id"])
-                    for k in ("descripcion", "vistas"):
-                        if det.get(k):
-                            ficha[k] = det[k]
-                    if det.get("publicado"):
-                        ficha["publicado"] = det["publicado"]
-                    ficha["es_short"] = False
-                else:
-                    ficha["es_short"] = es_short(v["id"])
-                ficha["miniatura"] = bajar_mini(v["id"], errores, c["nombre"])
+                     "channel_id": cid, "video_id": vid, "url": "https://www.youtube.com/watch?v=" + vid,
+                     "titulo_original": info["titulo"], "publicado": info["publicado"],
+                     "descripcion": info["descripcion"], "vistas": info["vistas"],
+                     "mediana_canal": mediana, "multiplicador": mult, "es_short": info["es_short"]}
+            edad_h = info.get("_edad_h", 1e9)
+            if vid not in vistos and edad_h <= VENTANA_NUEVOS_H:
+                ficha["miniatura"] = bajar_mini(vid, errores, c["nombre"])
                 nuevos.append(ficha)
-                vistos.add(v["id"])
-            if mult and mult >= umbral and OUTLIER_MIN_DIAS * 24 <= v.get("_edad_h", 0) <= OUTLIER_MAX_DIAS * 24:
+                vistos.add(vid)
+            if mult and mult >= umbral and OUTLIER_MIN_DIAS * 24 <= edad_h <= OUTLIER_MAX_DIAS * 24:
                 if "miniatura" not in ficha:
-                    ficha["miniatura"] = bajar_mini(v["id"], errores, c["nombre"])
+                    ficha["miniatura"] = bajar_mini(vid, errores, c["nombre"])
                 outliers.append(ficha)
-        time.sleep(1)
 
     # miniaturas que pide la búsqueda de Claude (outliers que llegan por vidIQ)
     pedidas = leer("state/pedir_miniaturas.json", [])
@@ -295,8 +245,10 @@ def main():
     escribir(f"data/{hoy}.json", salida)
     escribir("data/latest.json", salida)
     escribir("state/channel_ids.json", cache)
+    escribir("state/playlists.json", cache_playlists)
     escribir("state/vistos.json", sorted(vistos)[-5000:])
     print(f"{len(nuevos)} nuevos, {len(outliers)} outliers, {len(errores)} errores")
+    return 0
 
 
 if __name__ == "__main__":

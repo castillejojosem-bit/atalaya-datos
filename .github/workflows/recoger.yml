@@ -23,6 +23,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Recoger vídeos nuevos y miniaturas
+        env:
+          YT_API_KEY: ${{ secrets.YT_API_KEY }}
         run: python scripts/recoger.py
       - name: Guardar en el repositorio
         run: |
